@@ -58,14 +58,14 @@ with open('vocab.json', 'r') as f:
 model = TransformerLanguageModel(
     vocab_size=len(vocab),
     d_model=512,
-    nhead=64,
-    num_encoder_layers=12,
-    seq_length=2048
+    nhead=16,
+    num_encoder_layers=8,
+    seq_length=128
 )
-model.load_state_dict(torch.load('checkpoint_epoch_1.pth')['model_state_dict'])
+model.load_state_dict(torch.load('checkpoint_epoch_20.pth')['model_state_dict'])
 model.char_to_idx = {char: idx for idx, char in enumerate(vocab)}
 model.idx_to_char = {idx: char for char, idx in model.char_to_idx.items()}
-model.seq_length = 2048
+model.seq_length = 128
 model.eval()
 
 conversation_history = []  # Initialize an empty conversation history

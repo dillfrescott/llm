@@ -1,7 +1,7 @@
 import pyarrow.parquet as pq
 
 # Path to your Parquet file
-parquet_file = "train-00000-of-00001-5b226e5ae97bf4b1.parquet"
+parquet_file = "1M-GPT4-Augmented.parquet"
 
 # Read the Parquet file
 table = pq.read_table(parquet_file)

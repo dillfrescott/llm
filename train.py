@@ -74,12 +74,12 @@ writer = SummaryWriter(log_dir)
 # Hyperparameters
 d_model = 512
 hidden_size = 1024
-num_layers = 4
-seq_length = 2048 # Adjust to your desired sequence length
+num_layers = 6
+seq_length = 1024 # Adjust to your desired sequence length
 learning_rate = 0.0001
 num_epochs = 1000
 save_interval = 1  # Save every 'save_interval' epochs
-batch_size = 8  # Adjust batch size as per GPU memory
+batch_size = 32  # Adjust batch size as per GPU memory
 
 # Load your text data and create the dataset
 with open("output.txt", 'r', encoding='utf-8') as file:
@@ -92,7 +92,7 @@ with open("vocab.json", "w") as outfile:
 
 # Initialize the model, loss function, and optimizer for the Transformer-based model
 vocab_size = dataset.vocab_size  # Define vocab_size based on your dataset
-nhead = 64  # Define the number of attention heads
+nhead = 32  # Define the number of attention heads
 num_encoder_layers = 12  # Define the number of transformer encoder layers
 model = TransformerLanguageModel(vocab_size, d_model, nhead, num_encoder_layers, seq_length)
 model = model.cuda()  # Move model to GPU
@@ -101,8 +101,9 @@ model.idx_to_char = dataset.idx_to_char  # Add index-to-character mapping to the
 criterion = nn.CrossEntropyLoss()
 optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 
-# Create a DataLoader for the dataset
-dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
+# Create a DataLoader for the dataset with multiple workers
+num_workers = 0  # You can adjust this value based on your CPU cores
+dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
 
 # Initialize the learning rate scheduler
 scheduler = ReduceLROnPlateau(optimizer, 'min', patience=5, factor=0.5, verbose=True)
