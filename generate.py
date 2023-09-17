@@ -59,7 +59,7 @@ def generate_text(model, vocab, start_text, max_length=200, device="cuda", tempe
     return generated_text
 
 if __name__ == '__main__':
-    model_path = "checkpoint_epoch_1.pth"  # Replace with the actual path to your trained model checkpoint
+    model_path = "checkpoint_epoch_2.pth"  # Replace with the actual path to your trained model checkpoint
     vocab_path = "vocab.json"  # Replace with the actual path to your vocabulary JSON file
 
     vocab = load_vocab(vocab_path)

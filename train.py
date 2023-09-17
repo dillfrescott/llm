@@ -5,6 +5,8 @@ from torch.utils.data import Dataset, DataLoader
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.tensorboard import SummaryWriter
 import json
+import tensorboard
+import subprocess
 
 class TransformerNextWordPrediction(nn.Module):
     def __init__(self, vocab_size, d_model, num_heads, num_layers):
@@ -89,11 +91,13 @@ def train_transformer(model, dataloader, optimizer, criterion, scheduler, num_ep
             optimizer.step()
             total_loss += loss.item()
 
+            # Log loss per batch (step)
+            writer.add_scalar('Loss', loss.item(), global_step=step + epoch * len(dataloader))
+
             print(f'Epoch [{epoch+1}/{num_epochs}], Step [{step+1}/{len(dataloader)}], Loss: {loss.item()}')
 
         print(f'Epoch [{epoch+1}/{num_epochs}], Loss: {total_loss / len(dataloader)}')
         scheduler.step(total_loss / len(dataloader))
-        writer.add_scalar('Loss', total_loss / len(dataloader), global_step=epoch)
 
         if (epoch + 1) % save_interval == 0:
             save_checkpoint(epoch, model, optimizer, f"checkpoint_epoch_{epoch + 1}.pth")
@@ -108,7 +112,7 @@ if __name__ == '__main__':
     batch_size = 16
     learning_rate = 0.001
     seq_length = 1024
-
+    subprocess.Popen(["tensorboard", "--logdir", log_dir])
     with open("output.txt", 'r', encoding='utf-8') as file:
         text = file.read()
     dataset = NextWordPredictionDataset(text, seq_length)
