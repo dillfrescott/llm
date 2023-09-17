@@ -59,11 +59,11 @@ def generate_text(model, vocab, start_text, max_length=200, device="cuda", tempe
     return generated_text
 
 if __name__ == '__main__':
-    model_path = "checkpoint_epoch_2.pth"  # Replace with the actual path to your trained model checkpoint
+    model_path = "checkpoint_epoch_1.pth"  # Replace with the actual path to your trained model checkpoint
     vocab_path = "vocab.json"  # Replace with the actual path to your vocabulary JSON file
 
     vocab = load_vocab(vocab_path)
-    model = TransformerNextWordPrediction(len(vocab), d_model=512, num_heads=8, num_layers=6)
+    model = TransformerNextWordPrediction(len(vocab), d_model=256, num_heads=4, num_layers=3)
 
     # Load the model state_dict
     model = load_checkpoint(model_path, model)
