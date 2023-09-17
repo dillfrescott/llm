@@ -6,20 +6,17 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.tensorboard import SummaryWriter
 import json
 
-class TransformerLanguageModel(nn.Module):
-    def __init__(self, vocab_size, d_model, nhead, num_encoder_layers, seq_length):
-        super(TransformerLanguageModel, self).__init__()
+class TransformerNextWordPrediction(nn.Module):
+    def __init__(self, vocab_size, d_model, num_heads, num_layers):
+        super(TransformerNextWordPrediction, self).__init__()
         self.embedding = nn.Embedding(vocab_size, d_model)
-        self.transformer = nn.Transformer(d_model, nhead, num_encoder_layers)
+        self.transformer = nn.Transformer(d_model, num_heads, num_layers)
         self.fc = nn.Linear(d_model, vocab_size)
-        self.seq_length = seq_length
 
-    def forward(self, x):
-        x = self.embedding(x)
-        
-        # In an autoregressive setup, use the same sequence for src and tgt
-        out = self.transformer(x, x)
-        
+    def forward(self, src, tgt):
+        src = self.embedding(src)
+        tgt = self.embedding(tgt)
+        out = self.transformer(src, tgt)
         out = self.fc(out)
         return out
 
@@ -37,13 +34,12 @@ class TransformerLanguageModel(nn.Module):
                 predicted_idx = torch.argmax(predictions, dim=-1).item()
                 predicted_char = self.idx_to_char[predicted_idx]
 
-                generated_text += str(predicted_char)  # Convert to string before concatenation
+                generated_text += str(predicted_char)
                 input_text = generated_text[-self.seq_length:]
 
         return generated_text
 
-# Custom dataset for language modeling with a fixed sequence length
-class TextDataset(Dataset):
+class NextWordPredictionDataset(Dataset):
     def __init__(self, text, seq_length):
         self.seq_length = seq_length
         self.text = text
@@ -52,112 +48,85 @@ class TextDataset(Dataset):
         self.char_to_idx = {char: idx for idx, char in enumerate(self.vocab)}
         self.idx_to_char = {idx: char for idx, char in enumerate(self.vocab)}
 
-        # Preprocess the text to generate sequences of a consistent length
-        self.sequences = []
+        self.input_sequences = []
+        self.target_sequences = []
         for i in range(0, len(self.text) - seq_length, seq_length):
             input_seq = self.text[i:i + seq_length]
             target_seq = self.text[i + 1:i + seq_length + 1]
             input_tensor = torch.tensor([self.char_to_idx[char] for char in input_seq])
             target_tensor = torch.tensor([self.char_to_idx[char] for char in target_seq])
-            self.sequences.append((input_tensor, target_tensor))
+            self.input_sequences.append(input_tensor)
+            self.target_sequences.append(target_tensor)
 
     def __len__(self):
-        return len(self.sequences)
+        return len(self.input_sequences)
 
     def __getitem__(self, idx):
-        return self.sequences[idx]
+        return self.input_sequences[idx], self.target_sequences[idx]
 
-# Initialize SummaryWriter for TensorBoard logging
-log_dir = "./logs"  # Set your preferred log directory
-writer = SummaryWriter(log_dir)
-
-# Hyperparameters
-d_model = 512
-hidden_size = 1024
-num_layers = 6
-seq_length = 1024 # Adjust to your desired sequence length
-learning_rate = 0.0001
-num_epochs = 1000
-save_interval = 1  # Save every 'save_interval' epochs
-batch_size = 32  # Adjust batch size as per GPU memory
-
-# Load your text data and create the dataset
-with open("output.txt", 'r', encoding='utf-8') as file:
-    text = file.read()
-dataset = TextDataset(text, seq_length)
-
-# Save the vocabulary to a JSON file
-with open("vocab.json", "w") as outfile:
-    json.dump(dataset.vocab, outfile)
-
-# Initialize the model, loss function, and optimizer for the Transformer-based model
-vocab_size = dataset.vocab_size  # Define vocab_size based on your dataset
-nhead = 32  # Define the number of attention heads
-num_encoder_layers = 12  # Define the number of transformer encoder layers
-model = TransformerLanguageModel(vocab_size, d_model, nhead, num_encoder_layers, seq_length)
-model = model.cuda()  # Move model to GPU
-model.char_to_idx = dataset.char_to_idx  # Add character-to-index mapping to the model
-model.idx_to_char = dataset.idx_to_char  # Add index-to-character mapping to the model
-criterion = nn.CrossEntropyLoss()
-optimizer = optim.Adam(model.parameters(), lr=learning_rate)
-
-# Create a DataLoader for the dataset with multiple workers
-num_workers = 0  # You can adjust this value based on your CPU cores
-dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
-
-# Initialize the learning rate scheduler
-scheduler = ReduceLROnPlateau(optimizer, 'min', patience=5, factor=0.5, verbose=True)
-
-# Function to save a checkpoint
 def save_checkpoint(epoch, model, optimizer, filename):
     checkpoint = {
-        'epoch': epoch,
         'model_state_dict': model.state_dict(),
         'optimizer_state_dict': optimizer.state_dict(),
     }
     torch.save(checkpoint, filename)
 
-# Training loop
-for epoch in range(num_epochs):
-    total_loss = 0.0
+def train_transformer(model, dataloader, optimizer, criterion, scheduler, num_epochs, save_interval, device, log_dir):
+    model = model.to(device)
+    writer = SummaryWriter(log_dir)
+    
+    for epoch in range(num_epochs):
+        total_loss = 0.0
 
-    for step, (batch_input, batch_target) in enumerate(dataloader):
-        batch_input, batch_target = batch_input.cuda(), batch_target.cuda()  # Move data to GPU
-        optimizer.zero_grad()
+        for step, (batch_input, batch_target) in enumerate(dataloader):
+            batch_input, batch_target = batch_input.to(device), batch_target.to(device)
+            optimizer.zero_grad()
 
-        predictions = model(batch_input)
+            predictions = model(batch_input, batch_target)[:, -1, :]
 
-        # Reshape the predictions and targets
-        predictions = predictions.view(-1, vocab_size)
-        batch_target = batch_target.view(-1)
-        
-        loss = criterion(predictions, batch_target)
-        loss.backward()
+            loss = criterion(predictions, batch_target[:, -1])
+            loss.backward()
+            optimizer.step()
+            total_loss += loss.item()
 
-        optimizer.step()
-        total_loss += loss.item()
+            print(f'Epoch [{epoch+1}/{num_epochs}], Step [{step+1}/{len(dataloader)}], Loss: {loss.item()}')
 
-        # Print step information
-        print(f'Epoch [{epoch+1}/{num_epochs}], Step [{step+1}/{len(dataloader)}], Loss: {loss.item()}')
+        print(f'Epoch [{epoch+1}/{num_epochs}], Loss: {total_loss / len(dataloader)}')
+        scheduler.step(total_loss / len(dataloader))
+        writer.add_scalar('Loss', total_loss / len(dataloader), global_step=epoch)
 
-    print(f'Epoch [{epoch+1}/{num_epochs}], Loss: {total_loss / len(dataloader)}')
+        if (epoch + 1) % save_interval == 0:
+            save_checkpoint(epoch, model, optimizer, f"checkpoint_epoch_{epoch + 1}.pth")
 
-    # Update the learning rate based on the loss at this epoch
-    scheduler.step(total_loss / len(dataloader))
+    save_checkpoint(num_epochs - 1, model, optimizer, "final_model.pth")
+    writer.close()
 
-    # Log loss to TensorBoard
-    writer.add_scalar('Loss', total_loss / len(dataloader), global_step=epoch)
+if __name__ == '__main__':
+    log_dir = "./logs"
+    num_epochs = 1000
+    save_interval = 1
+    batch_size = 16
+    learning_rate = 0.001
+    seq_length = 1024
 
-    # Save checkpoint every 'save_interval' epochs
-    if (epoch + 1) % save_interval == 0:
-        save_checkpoint(epoch, model, optimizer, f"checkpoint_epoch_{epoch + 1}.pth")
+    with open("output.txt", 'r', encoding='utf-8') as file:
+        text = file.read()
+    dataset = NextWordPredictionDataset(text, seq_length)
 
-# Save the final trained model
-save_checkpoint(num_epochs - 1, model, optimizer, "final_model.pth")  # Use the last epoch number
+    with open("vocab.json", "w") as outfile:
+        json.dump(dataset.vocab, outfile)
 
-# Save the vocabulary to a JSON file
-with open("vocab.json", "w") as outfile:
-    json.dump(model.char_to_idx, outfile)
+    vocab_size = dataset.vocab_size
+    num_heads = 8  # Adjust the number of attention heads
+    num_layers = 6  # Adjust the number of transformer layers
 
-# Close the TensorBoard writer
-writer.close()
+    model = TransformerNextWordPrediction(vocab_size, d_model=512, num_heads=num_heads, num_layers=num_layers)
+    criterion = nn.CrossEntropyLoss()
+    optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=4, pin_memory=True)
+    scheduler = ReduceLROnPlateau(optimizer, 'min', patience=5, factor=0.5, verbose=True)
+
+    train_transformer(model, dataloader, optimizer, criterion, scheduler, num_epochs, save_interval, "cuda", log_dir)
+
+    with open("vocab.json", "w") as outfile:
+        json.dump(dataset.char_to_idx, outfile)

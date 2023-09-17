@@ -1,87 +1,74 @@
 import torch
 import json
+import random
 import torch.nn as nn
+from torch.utils.data import DataLoader
 
-class TransformerLanguageModel(nn.Module):
-    def __init__(self, vocab_size, d_model, nhead, num_encoder_layers, seq_length):
-        super(TransformerLanguageModel, self).__init__()
+class TransformerNextWordPrediction(nn.Module):
+    def __init__(self, vocab_size, d_model, num_heads, num_layers):
+        super(TransformerNextWordPrediction, self).__init__()
         self.embedding = nn.Embedding(vocab_size, d_model)
-        self.transformer = nn.Transformer(d_model, nhead, num_encoder_layers)
+        self.transformer = nn.Transformer(d_model, num_heads, num_layers)
         self.fc = nn.Linear(d_model, vocab_size)
-        self.vocab_size = vocab_size
-        self.char_to_idx = None
-        self.idx_to_char = None
-        self.seq_length = seq_length  # Added seq_length as an attribute
 
-    def forward(self, x):
-        x = self.embedding(x)
-        out = self.transformer(x, x)  # Use the same input sequence for src and tgt
+    def forward(self, src, tgt):
+        src = self.embedding(src)
+        tgt = self.embedding(tgt)
+        out = self.transformer(src, tgt)
         out = self.fc(out)
         return out
-
-    def generate_response(self, conversation, temperature=1.0, max_length=100, beam_width=5, device="cuda", context_window=3):
-        # Extract the context window from the conversation history
-        if len(conversation) > context_window:
-            conversation = conversation[-context_window:]
         
-        # Initialize with the conversation history
-        generated_text = " ".join(conversation)
-        conversation_history = generated_text
-        self.to(device)  # Move the entire model to the specified device
+def load_checkpoint(checkpoint_path, model, optimizer=None):
+    checkpoint = torch.load(checkpoint_path, map_location=torch.device('cpu'))
+    model.load_state_dict(checkpoint['model_state_dict'])
+    if optimizer is not None:
+        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+    return model
 
-        with torch.no_grad():
-            # Initialize the input tensor with conversation history
-            input_tensor = torch.tensor([[self.char_to_idx.get(char, 0) for char in generated_text]], dtype=torch.long).to(device)
+def load_vocab(vocab_path):
+    with open(vocab_path, 'r') as vocab_file:
+        vocab = json.load(vocab_file)
+    return vocab
+
+def generate_text(model, vocab, start_text, max_length=200, device="cuda", temperature=1.0):
+    model.eval()
+    generated_text = start_text
+
+    with torch.no_grad():
+        for _ in range(max_length):
+            input_indices = [vocab.index(char) for char in generated_text]
+            input_tensor = torch.tensor([input_indices], dtype=torch.long).to(device)
             
-            for _ in range(max_length):
-                predictions = self(input_tensor)
+            # Ensure the model is on the same device as the input tensor
+            model = model.to(device)
 
-                # Get predictions for the next token
-                predictions = predictions[:, -1, :].squeeze().div(temperature).exp()
-                predicted_idx = torch.multinomial(predictions, 1).item()
-                predicted_char = self.idx_to_char[predicted_idx]
-                
-                # Append the predicted token to the generated text
-                generated_text += str(predicted_char)
-                input_tensor = torch.tensor([[self.char_to_idx.get(char, 0) for char in generated_text]], dtype=torch.long).to(device)
-                
-            # Extract the model's response from the best candidate
-            model_response = generated_text[len(" ".join(conversation)):]
+            # Generate the next word with temperature
+            predictions = model(input_tensor, input_tensor)
+            predicted_logits = predictions[:, -1, :]
+            predicted_logits /= temperature
+            predicted_probs = torch.softmax(predicted_logits, dim=-1)
+            predicted_idx = torch.multinomial(predicted_probs, num_samples=1).item()
+            predicted_char = vocab[predicted_idx]
 
-        return model_response
+            generated_text += predicted_char
 
-# Load vocabulary
-with open('vocab.json', 'r') as f:
-    vocab = json.load(f)
+            # Stop if an end token is encountered
+            if predicted_char == "\n" or len(generated_text) >= max_length:
+                break
 
-# Load the trained model
-model = TransformerLanguageModel(
-    vocab_size=len(vocab),
-    d_model=512,
-    nhead=16,
-    num_encoder_layers=8,
-    seq_length=128
-)
-model.load_state_dict(torch.load('checkpoint_epoch_20.pth')['model_state_dict'])
-model.char_to_idx = {char: idx for idx, char in enumerate(vocab)}
-model.idx_to_char = {idx: char for char, idx in model.char_to_idx.items()}
-model.seq_length = 128
-model.eval()
+    return generated_text
 
-conversation_history = []  # Initialize an empty conversation history
+if __name__ == '__main__':
+    model_path = "final_model.pth"  # Replace with the actual path to your trained model checkpoint
+    vocab_path = "vocab.json"  # Replace with the actual path to your vocabulary JSON file
 
-print("Let's chat! Type 'quit' to exit.")
-while True:
-    user_input = input("You: ")
-    if user_input.lower() == 'quit':
-        break
+    vocab = load_vocab(vocab_path)
+    model = TransformerNextWordPrediction(len(vocab), d_model=512, num_heads=4, num_layers=6)
 
-    conversation_history.append(user_input)  # Add the user's input to the conversation history
+    # Load the model state_dict
+    model = load_checkpoint(model_path, model)
 
-    # Generate a response from the model based on the conversation history with a configurable context window
-    model_response = model.generate_response(conversation_history, max_length=100, context_window=3)
-    
-    print("Model: " + model_response)
+    start_text = "Your starting text is"  # Replace with your desired starting text
+    generated_text = generate_text(model, vocab, start_text, max_length=200, device="cuda")
 
-    # Append the model's response to the conversation history
-    conversation_history.append(model_response)
+    print(generated_text)
