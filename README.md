@@ -18,3 +18,5 @@ This project aims to design and implement a language learning model using GRU ne
 ## :heart: Acknowledgements
 
 * A special thanks to everyone who has contributed to this project.
+
+![gru](https://vignette.wikia.nocookie.net/despicableme/images/6/6b/Gru_sunglasses.jpg)
