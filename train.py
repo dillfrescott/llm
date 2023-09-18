@@ -133,6 +133,10 @@ if __name__ == '__main__':
     dataset = NextWordPredictionDataset(text, seq_length)
     vocab_size = dataset.vocab_size  # Calculate vocab_size based on your dataset
 
+    # Save the vocab file immediately
+    with open("vocab.json", "w") as outfile:
+        json.dump(dataset.char_to_idx, outfile)
+
     hyperparameters = {
         'model': {
             'embedding_dim': 512,
@@ -160,6 +164,3 @@ if __name__ == '__main__':
     scheduler = ReduceLROnPlateau(optimizer, 'min', patience=5, factor=0.5, verbose=True)
 
     train_lstm(model, dataset, optimizer, criterion, scheduler, num_epochs, save_interval, "cuda", log_dir, start_epoch)
-
-    with open("vocab.json", "w") as outfile:
-        json.dump(dataset.char_to_idx, outfile)
