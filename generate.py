@@ -16,7 +16,7 @@ class LSTMLanguageModel(nn.Module):
         out = self.fc(out)
         return out
 
-    def generate_text(self, start_text, char_to_idx, max_length=200, device="cuda"):
+    def generate_text(self, start_text, char_to_idx, max_length=200, temperature=1.5, device="cuda"):
         generated_text = start_text
         input_text = start_text
 
@@ -28,7 +28,12 @@ class LSTMLanguageModel(nn.Module):
                 predictions = self(input_tensor)
                 predictions = predictions[:, -1, :].squeeze()
 
-                predicted_idx = torch.argmax(predictions, dim=-1).item()
+                # Apply temperature to the predictions
+                predictions = predictions / temperature
+
+                # Use a probability distribution to sample the next character
+                predicted_probs = torch.softmax(predictions, dim=-1)
+                predicted_idx = torch.multinomial(predicted_probs, 1).item()
                 predicted_char = idx_to_char.get(predicted_idx, "<UNK>")
 
                 generated_text += str(predicted_char)
@@ -48,10 +53,10 @@ char_to_idx["<UNK>"] = len(char_to_idx)
 vocab_size = len(char_to_idx)
 
 # Define the model and load the trained model with the correct vocabulary size
-model = LSTMLanguageModel(vocab_size, embedding_dim=256, hidden_dim=512, num_layers=3, seq_length=128)
+model = LSTMLanguageModel(vocab_size, embedding_dim=512, hidden_dim=512, num_layers=3, seq_length=1024)
 
 # Load the checkpoint (update the path to your checkpoint file)
-checkpoint = torch.load("final_model.pth")
+checkpoint = torch.load("checkpoint_epoch_1.pth")
 
 # Load the model state dict, ignoring the embedding layer and the last linear layer
 model_state_dict = checkpoint['model_state_dict']

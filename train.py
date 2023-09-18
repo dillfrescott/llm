@@ -7,6 +7,7 @@ from torch.utils.tensorboard import SummaryWriter
 import json
 import tensorboard
 import subprocess
+import argparse
 
 class LSTMLanguageModel(nn.Module):
     def __init__(self, vocab_size, embedding_dim, hidden_dim, num_layers):
@@ -67,16 +68,17 @@ class NextWordPredictionDataset(Dataset):
 
 def save_checkpoint(epoch, model, optimizer, filename):
     checkpoint = {
+        'epoch': epoch,
         'model_state_dict': model.state_dict(),
         'optimizer_state_dict': optimizer.state_dict(),
     }
     torch.save(checkpoint, filename)
 
-def train_lstm(model, dataloader, optimizer, criterion, scheduler, num_epochs, save_interval, device, log_dir):
+def train_lstm(model, dataloader, optimizer, criterion, scheduler, num_epochs, save_interval, device, log_dir, start_epoch=0):
     model = model.to(device)
     writer = SummaryWriter(log_dir)
     
-    for epoch in range(num_epochs):
+    for epoch in range(start_epoch, num_epochs):
         total_loss = 0.0
 
         for step, (batch_input, batch_target) in enumerate(dataloader):
@@ -109,34 +111,55 @@ def train_lstm(model, dataloader, optimizer, criterion, scheduler, num_epochs, s
     save_checkpoint(num_epochs - 1, model, optimizer, "final_model.pth")
     writer.close()
 
+def create_model_and_optimizer(vocab_size, hyperparameters):
+    model = LSTMLanguageModel(vocab_size, **hyperparameters['model'])
+    optimizer = optim.Adam(model.parameters(), **hyperparameters['optimizer'])
+    return model, optimizer
+
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='LSTM Language Model Training')
+    parser.add_argument('--checkpoint', type=str, default=None, help='Path to checkpoint file to resume training')
+    args = parser.parse_args()
+
     log_dir = "./logs"
     num_epochs = 1000
     save_interval = 1
-    learning_rate = 0.001
     seq_length = 1024
     subprocess.Popen(["tensorboard", "--logdir", log_dir])
     with open("output.txt", 'r', encoding='utf-8') as file:
         text = file.read()
-    
+
     # Load the entire dataset into RAM
     dataset = NextWordPredictionDataset(text, seq_length)
-    
-    with open("vocab.json", "w") as outfile:
-        json.dump(dataset.vocab, outfile)
+    vocab_size = dataset.vocab_size  # Calculate vocab_size based on your dataset
 
-    vocab_size = dataset.vocab_size
-    num_layers = 3  # Adjust the number of transformer layers
+    hyperparameters = {
+        'model': {
+            'embedding_dim': 512,
+            'hidden_dim': 512,
+            'num_layers': 3,
+        },
+        'optimizer': {
+            'lr': 0.001,
+        },
+    }
 
-    model = LSTMLanguageModel(vocab_size, embedding_dim=512, hidden_dim=512, num_layers=num_layers)
+    if args.checkpoint is not None:
+        # If a checkpoint path is provided, load the model and optimizer state from it
+        checkpoint = torch.load(args.checkpoint)
+        model, optimizer = create_model_and_optimizer(vocab_size, hyperparameters)
+        model.load_state_dict(checkpoint['model_state_dict'])
+        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        start_epoch = checkpoint['epoch'] + 1
+    else:
+        # Otherwise, create a new model and optimizer
+        model, optimizer = create_model_and_optimizer(vocab_size, hyperparameters)
+        start_epoch = 0
+
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=learning_rate)
-    
-    # You no longer need DataLoader, as the dataset is in RAM.
-    # dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=16, pin_memory=True)
     scheduler = ReduceLROnPlateau(optimizer, 'min', patience=5, factor=0.5, verbose=True)
 
-    train_lstm(model, dataset, optimizer, criterion, scheduler, num_epochs, save_interval, "cuda", log_dir)
+    train_lstm(model, dataset, optimizer, criterion, scheduler, num_epochs, save_interval, "cuda", log_dir, start_epoch)
 
     with open("vocab.json", "w") as outfile:
         json.dump(dataset.char_to_idx, outfile)
