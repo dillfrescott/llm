@@ -159,7 +159,7 @@ def main_training_loop(model, train_dataset, val_dataset, optimizer, criterion, 
     val_dataloader = torch.utils.data.DataLoader(val_dataset, batch_size=config['batch_size'], shuffle=False)
     
     writer = SummaryWriter(config['log_dir'])
-    save_steps_interval = 100    
+    save_steps_interval = 1000    
     global_step = 0
 
     for epoch in range(config['start_epoch'], config['num_epochs']):
