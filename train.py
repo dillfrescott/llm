@@ -153,7 +153,7 @@ if __name__ == '__main__':
             'num_layers': 6,
         },
         'optimizer': {
-            'lr': 0.001,
+            'lr': 0.0004,
         },
         'save_interval': 2000,  # Set the save interval as a hyperparameter
     }

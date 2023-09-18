@@ -46,7 +46,7 @@ vocab_size = len(char_to_idx)
 model = GRULanguageModel(vocab_size, embedding_dim=512, hidden_dim=2048, num_layers=6)
 
 # Load the checkpoint weights into the model
-checkpoint = torch.load("checkpoint_step_10.pth", map_location=torch.device("cuda"))
+checkpoint = torch.load("checkpoint_step_2000.pth", map_location=torch.device("cuda"))
 model.load_state_dict(checkpoint['model_state_dict'])
 model.to(device)
 model.eval()
@@ -87,5 +87,5 @@ while True:
     if user_input.lower() == 'exit':
         break
 
-    response = generate_text(user_input, temperature=0.8)
+    response = generate_text(user_input, temperature=0.6)
     print("Model:", response)
