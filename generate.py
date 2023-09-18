@@ -43,21 +43,22 @@ idx_to_char = {idx: char for char, idx in char_to_idx.items()}
 vocab_size = len(char_to_idx)
 
 # Create a new model with the same architecture
-model = GRULanguageModel(vocab_size, embedding_dim=256, hidden_dim=512, num_layers=4)
+model = GRULanguageModel(vocab_size, embedding_dim=512, hidden_dim=512, num_layers=4)
 
 # Load the checkpoint weights into the model
-checkpoint = torch.load("final_model.pth", map_location=torch.device("cpu"))  # Use 'cpu' if you don't have a GPU
+checkpoint = torch.load("checkpoint_epoch_2.pth", map_location=torch.device("cpu"))  # Use 'cpu' if you don't have a GPU
 model.load_state_dict(checkpoint['model_state_dict'])
 
 model.eval()
 
 # Function to generate text
 def generate_text(prompt, max_length=200, temperature=1.0):
-    generated_text = prompt
+    input_text = prompt
+    generated_text = ""  # Initialize generated_text as an empty string
 
     with torch.no_grad():
         for _ in range(max_length):
-            input_tensor = torch.tensor([[char_to_idx.get(char, 0) for char in generated_text]], dtype=torch.long)
+            input_tensor = torch.tensor([[char_to_idx.get(char, 0) for char in input_text]], dtype=torch.long)
 
             predictions = model(input_tensor)
             predictions = predictions[:, -1, :].squeeze() / temperature  # Adjust for temperature
@@ -70,6 +71,7 @@ def generate_text(prompt, max_length=200, temperature=1.0):
             predicted_char = idx_to_char[predicted_idx]
 
             generated_text += str(predicted_char)
+            input_text += str(predicted_char)  # Update the input text with the predicted character
 
             if predicted_char == '\n':
                 break  # Stop if the model predicts a newline character

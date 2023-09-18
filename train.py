@@ -124,9 +124,9 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     log_dir = "./logs"
-    num_epochs = 300
-    save_interval = 300
-    seq_length = 24
+    num_epochs = 10
+    save_interval = 1
+    seq_length = 2048
     subprocess.Popen(["tensorboard", "--logdir", log_dir])
 
     # Read text from a file
@@ -145,7 +145,7 @@ if __name__ == '__main__':
 
     hyperparameters = {
         'model': {
-            'embedding_dim': 256,
+            'embedding_dim': 512,
             'hidden_dim': 512,
             'num_layers': 4,
         },
