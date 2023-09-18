@@ -2,7 +2,7 @@ import torch
 from torch.utils.data import DataLoader
 import json
 import torch.nn as nn
-
+device = "cuda"
 class GRULanguageModel(nn.Module):
     def __init__(self, vocab_size, embedding_dim, hidden_dim, num_layers):
         super(GRULanguageModel, self).__init__()
@@ -22,7 +22,7 @@ class GRULanguageModel(nn.Module):
 
         with torch.no_grad():
             for _ in range(max_length):
-                input_tensor = torch.tensor([[self.char_to_idx.get(char, 0) for char in input_text]], dtype=torch.long).to(device)
+                input_tensor = torch.tensor([[char_to_idx.get(char, 0) for char in input_text]], dtype=torch.long).to(device)
 
                 predictions = self(input_tensor)
                 predictions = predictions[:, -1, :].squeeze()
@@ -43,12 +43,12 @@ idx_to_char = {idx: char for char, idx in char_to_idx.items()}
 vocab_size = len(char_to_idx)
 
 # Create a new model with the same architecture
-model = GRULanguageModel(vocab_size, embedding_dim=512, hidden_dim=512, num_layers=4)
+model = GRULanguageModel(vocab_size, embedding_dim=512, hidden_dim=2048, num_layers=6)
 
 # Load the checkpoint weights into the model
-checkpoint = torch.load("checkpoint_epoch_2.pth", map_location=torch.device("cpu"))  # Use 'cpu' if you don't have a GPU
+checkpoint = torch.load("checkpoint_step_10.pth", map_location=torch.device("cuda"))
 model.load_state_dict(checkpoint['model_state_dict'])
-
+model.to(device)
 model.eval()
 
 # Function to generate text
@@ -58,7 +58,7 @@ def generate_text(prompt, max_length=200, temperature=1.0):
 
     with torch.no_grad():
         for _ in range(max_length):
-            input_tensor = torch.tensor([[char_to_idx.get(char, 0) for char in input_text]], dtype=torch.long)
+            input_tensor = torch.tensor([[char_to_idx.get(char, 0) for char in input_text]], dtype=torch.long).to(device)
 
             predictions = model(input_tensor)
             predictions = predictions[:, -1, :].squeeze() / temperature  # Adjust for temperature

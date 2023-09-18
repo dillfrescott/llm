@@ -79,10 +79,13 @@ def train_gru(model, dataloader, optimizer, criterion, scheduler, num_epochs, sa
     model = model.to(device)
     writer = SummaryWriter(log_dir)
     
+    step_count = 0  # Initialize a step count variable
+
     for epoch in range(start_epoch, num_epochs):
         total_loss = 0.0
 
         for step, (batch_input, batch_target) in enumerate(dataloader):
+            step_count += 1  # Increment the step count
             batch_input, batch_target = batch_input.to(device), batch_target.to(device)
             optimizer.zero_grad()
 
@@ -99,15 +102,16 @@ def train_gru(model, dataloader, optimizer, criterion, scheduler, num_epochs, sa
             total_loss += loss.item()
 
             # Log loss per batch (step)
-            writer.add_scalar('Loss', loss.item(), global_step=step + epoch * len(dataloader))
+            writer.add_scalar('Loss', loss.item(), global_step=step_count)  # Use step_count for global_step
 
             print(f'Epoch [{epoch+1}/{num_epochs}], Step [{step+1}/{len(dataloader)}], Loss: {loss.item()}')
 
+            # Check if it's time to save a checkpoint
+            if step_count % save_interval == 0:
+                save_checkpoint(epoch, model, optimizer, f"checkpoint_step_{step_count}.pth")
+
         print(f'Epoch [{epoch+1}/{num_epochs}], Loss: {total_loss / len(dataloader)}')
         scheduler.step(total_loss / len(dataloader))
-
-        if (epoch + 1) % save_interval == 0:
-            save_checkpoint(epoch, model, optimizer, f"checkpoint_epoch_{epoch + 1}.pth")
 
     save_checkpoint(num_epochs - 1, model, optimizer, "final_model.pth")
     writer.close()
@@ -124,8 +128,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     log_dir = "./logs"
-    num_epochs = 10
-    save_interval = 1
+    num_epochs = 1000
     seq_length = 2048
     subprocess.Popen(["tensorboard", "--logdir", log_dir])
 
@@ -146,12 +149,13 @@ if __name__ == '__main__':
     hyperparameters = {
         'model': {
             'embedding_dim': 512,
-            'hidden_dim': 512,
-            'num_layers': 4,
+            'hidden_dim': 2048,
+            'num_layers': 6,
         },
         'optimizer': {
             'lr': 0.001,
         },
+        'save_interval': 2000,  # Set the save interval as a hyperparameter
     }
 
     if args.checkpoint is not None:
@@ -169,4 +173,4 @@ if __name__ == '__main__':
     criterion = nn.CrossEntropyLoss()
     scheduler = ReduceLROnPlateau(optimizer, 'min', patience=5, factor=0.5, verbose=True)
 
-    train_gru(model, dataset, optimizer, criterion, scheduler, num_epochs, save_interval, "cuda", log_dir, start_epoch)
+    train_gru(model, dataset, optimizer, criterion, scheduler, num_epochs, hyperparameters['save_interval'], "cuda", log_dir, start_epoch)
