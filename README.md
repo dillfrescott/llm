@@ -10,7 +10,6 @@ This project aims to design and implement a language learning model using GRU ne
 
 - **Efficient Processing**: Utilizes the power of GRUs for efficient sequence processing.
 - **Customizable**: Adjust hyperparameters to fit specific use cases.
-- **Pre-trained Models**: Comes with pre-trained weights for instant usage.
 
 ## :bar_chart: Performance Metrics
 
