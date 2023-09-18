@@ -159,6 +159,7 @@ def main_training_loop(model, train_dataset, val_dataset, optimizer, criterion, 
     val_dataloader = torch.utils.data.DataLoader(val_dataset, batch_size=config['batch_size'], shuffle=False)
     
     writer = SummaryWriter(config['log_dir'])
+    save_steps_interval = 100    
     global_step = 0
 
     for epoch in range(config['start_epoch'], config['num_epochs']):
@@ -177,6 +178,10 @@ def main_training_loop(model, train_dataset, val_dataset, optimizer, criterion, 
             train_losses.append(loss.item())
             writer.add_scalar('Training Loss', loss.item(), global_step)
             global_step += 1
+            
+            # Save checkpoint every save_steps_interval
+            if global_step % save_steps_interval == 0:
+                save_checkpoint(epoch, model, optimizer, f"checkpoint_step_{global_step}.pth")
         
         # Compute average training loss for the epoch
         train_loss = sum(train_losses) / len(train_losses)
@@ -225,7 +230,7 @@ def get_config(args):
         'hidden_dim': args.hidden_dim or 256,
         'num_layers': args.num_layers or 2,
         'batch_size': args.batch_size or 64,
-        'num_epochs': args.num_epochs or 30,
+        'num_epochs': args.num_epochs or 1000,
         'lr': args.lr or 0.001,
         'log_dir': args.log_dir or './logs',
         'save_interval': args.save_interval or 10,
