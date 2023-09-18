@@ -113,14 +113,15 @@ if __name__ == '__main__':
     log_dir = "./logs"
     num_epochs = 1000
     save_interval = 1
-    batch_size = 128
     learning_rate = 0.001
     seq_length = 1024
     subprocess.Popen(["tensorboard", "--logdir", log_dir])
     with open("output.txt", 'r', encoding='utf-8') as file:
         text = file.read()
+    
+    # Load the entire dataset into RAM
     dataset = NextWordPredictionDataset(text, seq_length)
-
+    
     with open("vocab.json", "w") as outfile:
         json.dump(dataset.vocab, outfile)
 
@@ -130,10 +131,12 @@ if __name__ == '__main__':
     model = LSTMLanguageModel(vocab_size, embedding_dim=512, hidden_dim=512, num_layers=num_layers)
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
-    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=16, pin_memory=True)
+    
+    # You no longer need DataLoader, as the dataset is in RAM.
+    # dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=16, pin_memory=True)
     scheduler = ReduceLROnPlateau(optimizer, 'min', patience=5, factor=0.5, verbose=True)
 
-    train_lstm(model, dataloader, optimizer, criterion, scheduler, num_epochs, save_interval, "cuda", log_dir)
+    train_lstm(model, dataset, optimizer, criterion, scheduler, num_epochs, save_interval, "cuda", log_dir)
 
     with open("vocab.json", "w") as outfile:
         json.dump(dataset.char_to_idx, outfile)
