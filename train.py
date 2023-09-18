@@ -9,16 +9,16 @@ import tensorboard
 import subprocess
 import argparse
 
-class LSTMLanguageModel(nn.Module):
+class GRULanguageModel(nn.Module):
     def __init__(self, vocab_size, embedding_dim, hidden_dim, num_layers):
-        super(LSTMLanguageModel, self).__init__()
+        super(GRULanguageModel, self).__init__()
         self.embedding = nn.Embedding(vocab_size, embedding_dim)
-        self.lstm = nn.LSTM(embedding_dim, hidden_dim, num_layers, batch_first=True)
+        self.gru = nn.GRU(embedding_dim, hidden_dim, num_layers, batch_first=True)
         self.fc = nn.Linear(hidden_dim, vocab_size)
 
     def forward(self, x):
         embedded = self.embedding(x)
-        out, _ = self.lstm(embedded)
+        out, _ = self.gru(embedded)
         out = self.fc(out)
         return out
 
@@ -41,20 +41,21 @@ class LSTMLanguageModel(nn.Module):
 
         return generated_text
 
-class NextWordPredictionDataset(Dataset):
+class NextCharPredictionDataset(Dataset):
     def __init__(self, text, seq_length):
         self.seq_length = seq_length
         self.text = text
-        self.vocab = sorted(set(self.text))
-        self.vocab_size = len(self.vocab)
-        self.char_to_idx = {char: idx for idx, char in enumerate(self.vocab)}
-        self.idx_to_char = {idx: char for idx, char in enumerate(self.vocab)}
+        self.chars = list(set(text))  # Collect unique characters in the text
+        self.chars.sort()  # Sort the characters alphabetically
+        self.vocab_size = len(self.chars)
+        self.char_to_idx = {char: idx for idx, char in enumerate(self.chars)}
+        self.idx_to_char = {idx: char for idx, char in enumerate(self.chars)}
 
         self.input_sequences = []
         self.target_sequences = []
-        for i in range(0, len(self.text) - seq_length, seq_length):
-            input_seq = self.text[i:i + seq_length]
-            target_seq = self.text[i + 1:i + seq_length + 1]
+        for i in range(0, len(text) - seq_length, seq_length):
+            input_seq = text[i:i + seq_length]
+            target_seq = text[i + 1:i + seq_length + 1]
             input_tensor = torch.tensor([self.char_to_idx[char] for char in input_seq])
             target_tensor = torch.tensor([self.char_to_idx[char] for char in target_seq])
             self.input_sequences.append(input_tensor)
@@ -74,7 +75,7 @@ def save_checkpoint(epoch, model, optimizer, filename):
     }
     torch.save(checkpoint, filename)
 
-def train_lstm(model, dataloader, optimizer, criterion, scheduler, num_epochs, save_interval, device, log_dir, start_epoch=0):
+def train_gru(model, dataloader, optimizer, criterion, scheduler, num_epochs, save_interval, device, log_dir, start_epoch=0):
     model = model.to(device)
     writer = SummaryWriter(log_dir)
     
@@ -112,26 +113,31 @@ def train_lstm(model, dataloader, optimizer, criterion, scheduler, num_epochs, s
     writer.close()
 
 def create_model_and_optimizer(vocab_size, hyperparameters):
-    model = LSTMLanguageModel(vocab_size, **hyperparameters['model'])
+    model = GRULanguageModel(vocab_size, **hyperparameters['model'])
     optimizer = optim.Adam(model.parameters(), **hyperparameters['optimizer'])
     return model, optimizer
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='LSTM Language Model Training')
+    parser = argparse.ArgumentParser(description='GRU Language Model Training')
     parser.add_argument('--checkpoint', type=str, default=None, help='Path to checkpoint file to resume training')
+    parser.add_argument('--text_file', type=str, default=None, help='Path to the text file for training')
     args = parser.parse_args()
 
     log_dir = "./logs"
-    num_epochs = 1000
-    save_interval = 1
-    seq_length = 1024
+    num_epochs = 300
+    save_interval = 300
+    seq_length = 24
     subprocess.Popen(["tensorboard", "--logdir", log_dir])
-    with open("output.txt", 'r', encoding='utf-8') as file:
-        text = file.read()
 
-    # Load the entire dataset into RAM
-    dataset = NextWordPredictionDataset(text, seq_length)
-    vocab_size = dataset.vocab_size  # Calculate vocab_size based on your dataset
+    # Read text from a file
+    if args.text_file is not None:
+        with open(args.text_file, 'r', encoding='utf-8') as file:
+            text = file.read().replace('\n', '')
+    else:
+        text = "the quick brown fox jumps over the lazy dog the quick brown fox"
+
+    dataset = NextCharPredictionDataset(text, seq_length)
+    vocab_size = dataset.vocab_size
 
     # Save the vocab file immediately
     with open("vocab.json", "w") as outfile:
@@ -139,9 +145,9 @@ if __name__ == '__main__':
 
     hyperparameters = {
         'model': {
-            'embedding_dim': 512,
+            'embedding_dim': 256,
             'hidden_dim': 512,
-            'num_layers': 3,
+            'num_layers': 4,
         },
         'optimizer': {
             'lr': 0.001,
@@ -163,4 +169,4 @@ if __name__ == '__main__':
     criterion = nn.CrossEntropyLoss()
     scheduler = ReduceLROnPlateau(optimizer, 'min', patience=5, factor=0.5, verbose=True)
 
-    train_lstm(model, dataset, optimizer, criterion, scheduler, num_epochs, save_interval, "cuda", log_dir, start_epoch)
+    train_gru(model, dataset, optimizer, criterion, scheduler, num_epochs, save_interval, "cuda", log_dir, start_epoch)
