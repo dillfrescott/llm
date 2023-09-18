@@ -8,17 +8,16 @@ import json
 import tensorboard
 import subprocess
 
-class TransformerNextWordPrediction(nn.Module):
-    def __init__(self, vocab_size, d_model, num_heads, num_layers):
-        super(TransformerNextWordPrediction, self).__init__()
-        self.embedding = nn.Embedding(vocab_size, d_model)
-        self.transformer = nn.Transformer(d_model, num_heads, num_layers)
-        self.fc = nn.Linear(d_model, vocab_size)
+class LSTMLanguageModel(nn.Module):
+    def __init__(self, vocab_size, embedding_dim, hidden_dim, num_layers):
+        super(LSTMLanguageModel, self).__init__()
+        self.embedding = nn.Embedding(vocab_size, embedding_dim)
+        self.lstm = nn.LSTM(embedding_dim, hidden_dim, num_layers, batch_first=True)
+        self.fc = nn.Linear(hidden_dim, vocab_size)
 
-    def forward(self, src, tgt):
-        src = self.embedding(src)
-        tgt = self.embedding(tgt)
-        out = self.transformer(src, tgt)
+    def forward(self, x):
+        embedded = self.embedding(x)
+        out, _ = self.lstm(embedded)
         out = self.fc(out)
         return out
 
@@ -73,7 +72,7 @@ def save_checkpoint(epoch, model, optimizer, filename):
     }
     torch.save(checkpoint, filename)
 
-def train_transformer(model, dataloader, optimizer, criterion, scheduler, num_epochs, save_interval, device, log_dir):
+def train_lstm(model, dataloader, optimizer, criterion, scheduler, num_epochs, save_interval, device, log_dir):
     model = model.to(device)
     writer = SummaryWriter(log_dir)
     
@@ -84,9 +83,14 @@ def train_transformer(model, dataloader, optimizer, criterion, scheduler, num_ep
             batch_input, batch_target = batch_input.to(device), batch_target.to(device)
             optimizer.zero_grad()
 
-            predictions = model(batch_input, batch_target)[:, -1, :]
+            # Forward pass through the model
+            output = model(batch_input)
 
-            loss = criterion(predictions, batch_target[:, -1])
+            # Reshape the output and target sequences to compute the loss
+            output = output.view(-1, vocab_size)
+            batch_target = batch_target.view(-1)
+
+            loss = criterion(output, batch_target)
             loss.backward()
             optimizer.step()
             total_loss += loss.item()
@@ -109,7 +113,7 @@ if __name__ == '__main__':
     log_dir = "./logs"
     num_epochs = 1000
     save_interval = 1
-    batch_size = 16
+    batch_size = 128
     learning_rate = 0.001
     seq_length = 1024
     subprocess.Popen(["tensorboard", "--logdir", log_dir])
@@ -121,16 +125,15 @@ if __name__ == '__main__':
         json.dump(dataset.vocab, outfile)
 
     vocab_size = dataset.vocab_size
-    num_heads = 8  # Adjust the number of attention heads
-    num_layers = 6  # Adjust the number of transformer layers
+    num_layers = 3  # Adjust the number of transformer layers
 
-    model = TransformerNextWordPrediction(vocab_size, d_model=512, num_heads=num_heads, num_layers=num_layers)
+    model = LSTMLanguageModel(vocab_size, embedding_dim=512, hidden_dim=512, num_layers=num_layers)
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
-    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=4, pin_memory=True)
+    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=16, pin_memory=True)
     scheduler = ReduceLROnPlateau(optimizer, 'min', patience=5, factor=0.5, verbose=True)
 
-    train_transformer(model, dataloader, optimizer, criterion, scheduler, num_epochs, save_interval, "cuda", log_dir)
+    train_lstm(model, dataloader, optimizer, criterion, scheduler, num_epochs, save_interval, "cuda", log_dir)
 
     with open("vocab.json", "w") as outfile:
         json.dump(dataset.char_to_idx, outfile)

@@ -1,74 +1,83 @@
 import torch
-import json
-import random
 import torch.nn as nn
-from torch.utils.data import DataLoader
+import json
 
-class TransformerNextWordPrediction(nn.Module):
-    def __init__(self, vocab_size, d_model, num_heads, num_layers):
-        super(TransformerNextWordPrediction, self).__init__()
-        self.embedding = nn.Embedding(vocab_size, d_model)
-        self.transformer = nn.Transformer(d_model, num_heads, num_layers)
-        self.fc = nn.Linear(d_model, vocab_size)
+class LSTMLanguageModel(nn.Module):
+    def __init__(self, vocab_size, embedding_dim, hidden_dim, num_layers, seq_length):
+        super(LSTMLanguageModel, self).__init__()
+        self.embedding = nn.Embedding(vocab_size, embedding_dim)
+        self.lstm = nn.LSTM(embedding_dim, hidden_dim, num_layers, batch_first=True)
+        self.fc = nn.Linear(hidden_dim, vocab_size)
+        self.seq_length = seq_length  # Add seq_length as a parameter
 
-    def forward(self, src, tgt):
-        src = self.embedding(src)
-        tgt = self.embedding(tgt)
-        out = self.transformer(src, tgt)
+    def forward(self, x):
+        embedded = self.embedding(x)
+        out, _ = self.lstm(embedded)
         out = self.fc(out)
         return out
-        
-def load_checkpoint(checkpoint_path, model, optimizer=None):
-    checkpoint = torch.load(checkpoint_path, map_location=torch.device('cpu'))
-    model.load_state_dict(checkpoint['model_state_dict'])
-    if optimizer is not None:
-        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-    return model
 
-def load_vocab(vocab_path):
-    with open(vocab_path, 'r') as vocab_file:
-        vocab = json.load(vocab_file)
-    return vocab
+    def generate_text(self, start_text, char_to_idx, max_length=200, device="cuda"):
+        generated_text = start_text
+        input_text = start_text
 
-def generate_text(model, vocab, start_text, max_length=200, device="cuda", temperature=1.0):
-    model.eval()
-    generated_text = start_text
+        with torch.no_grad():
+            for _ in range(max_length):
+                input_indices = [char_to_idx.get(char, char_to_idx["<UNK>"]) for char in input_text]
+                input_tensor = torch.tensor([input_indices], dtype=torch.long).to(device)
 
-    with torch.no_grad():
-        for _ in range(max_length):
-            input_indices = [vocab.index(char) for char in generated_text]
-            input_tensor = torch.tensor([input_indices], dtype=torch.long).to(device)
-            
-            # Ensure the model is on the same device as the input tensor
-            model = model.to(device)
+                predictions = self(input_tensor)
+                predictions = predictions[:, -1, :].squeeze()
 
-            # Generate the next word with temperature
-            predictions = model(input_tensor, input_tensor)
-            predicted_logits = predictions[:, -1, :]
-            predicted_logits /= temperature
-            predicted_probs = torch.softmax(predicted_logits, dim=-1)
-            predicted_idx = torch.multinomial(predicted_probs, num_samples=1).item()
-            predicted_char = vocab[predicted_idx]
+                predicted_idx = torch.argmax(predictions, dim=-1).item()
+                predicted_char = idx_to_char.get(predicted_idx, "<UNK>")
 
-            generated_text += predicted_char
+                generated_text += str(predicted_char)
+                input_text = generated_text[-self.seq_length:]
 
-            # Stop if an end token is encountered
-            if predicted_char == "\n" or len(generated_text) >= max_length:
-                break
+        return generated_text
 
-    return generated_text
+# Load the vocabulary as a list of characters
+with open("vocab.json", "r") as vocab_file:
+    char_to_idx = {char: idx for idx, char in enumerate(json.load(vocab_file))}
+    idx_to_char = {idx: char for char, idx in char_to_idx.items()}  # Reverse mapping
 
-if __name__ == '__main__':
-    model_path = "checkpoint_epoch_2.pth"  # Replace with the actual path to your trained model checkpoint
-    vocab_path = "vocab.json"  # Replace with the actual path to your vocabulary JSON file
+# Add a special token for unknown characters
+char_to_idx["<UNK>"] = len(char_to_idx)
 
-    vocab = load_vocab(vocab_path)
-    model = TransformerNextWordPrediction(len(vocab), d_model=512, num_heads=8, num_layers=6)
+# Make sure the vocabulary size matches the model's embedding size
+vocab_size = len(char_to_idx)
 
-    # Load the model state_dict
-    model = load_checkpoint(model_path, model)
+# Define the model and load the trained model with the correct vocabulary size
+model = LSTMLanguageModel(vocab_size, embedding_dim=256, hidden_dim=512, num_layers=3, seq_length=128)
 
-    start_text = "9 + 2 ="  # Replace with your desired starting text
-    generated_text = generate_text(model, vocab, start_text, max_length=200, device="cuda")
+# Load the checkpoint (update the path to your checkpoint file)
+checkpoint = torch.load("final_model.pth")
 
-    print(generated_text)
+# Load the model state dict, ignoring the embedding layer and the last linear layer
+model_state_dict = checkpoint['model_state_dict']
+model_state_dict.pop('embedding.weight')
+model_state_dict.pop('fc.weight')
+model_state_dict.pop('fc.bias')
+
+# Load the state dict into the model
+model.load_state_dict(model_state_dict, strict=False)
+
+# Set the device to 'cuda' or 'cpu' depending on your system
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+model.to(device)
+model.eval()
+
+# Set the device to 'cuda' or 'cpu' depending on your system
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+model.to(device)
+
+print("Chat with the model. Type 'exit' to end the conversation.")
+
+while True:
+    user_input = input("You: ")
+    if user_input.lower() == "exit":
+        break
+
+    generated_text = model.generate_text(user_input, char_to_idx, max_length=200, device=device)
+
+    print("Model:", generated_text)
