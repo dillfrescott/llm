@@ -46,7 +46,7 @@ vocab_size = len(char_to_idx)
 model = GRULanguageModel(vocab_size, embedding_dim=512, hidden_dim=2048, num_layers=6)
 
 # Load the checkpoint weights into the model
-checkpoint = torch.load("checkpoint_step_2000.pth", map_location=torch.device("cuda"))
+checkpoint = torch.load("checkpoint_step_6000.pth", map_location=torch.device("cuda"))
 model.load_state_dict(checkpoint['model_state_dict'])
 model.to(device)
 model.eval()
@@ -73,10 +73,13 @@ def generate_text(prompt, max_length=200, temperature=1.0):
             generated_text += str(predicted_char)
             input_text += str(predicted_char)  # Update the input text with the predicted character
 
+            # Print the character as it's generated (flush=True ensures it's printed immediately)
+            print(predicted_char, end='', flush=True)
+
             if predicted_char == '\n':
                 break  # Stop if the model predicts a newline character
 
-    return generated_text
+    print()  # Print a newline after generating the text
 
 # Chat with the model
 print("GRU Language Model Chat (Type 'exit' to quit)")
@@ -87,5 +90,6 @@ while True:
     if user_input.lower() == 'exit':
         break
 
+    print("Model:", end='', flush=True)
     response = generate_text(user_input, temperature=0.6)
-    print("Model:", response)
+    print()
