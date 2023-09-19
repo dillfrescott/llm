@@ -23,7 +23,7 @@ class GRUModel(nn.Module):
 
 # Read and process data
 def read_data(file_path):
-    with open(file_path, 'r') as file:
+    with open(file_path, 'r', encoding='utf-8') as file:
         text = file.read().lower()
     return text
 
@@ -33,17 +33,17 @@ def char_to_index(char, char_list):
 def index_to_char(index, char_list):
     return char_list[index]
 
-text = read_data("shak.txt")
+text = read_data("valid.txt")
 chars = sorted(list(set(text + string.punctuation + ' ')))
 vocab_size = len(chars)
 
 # Hyperparameters
-embed_size = 4096
-hidden_size = 4096
-sequence_length = 2048
-lr = 0.001
+embed_size = 8096
+hidden_size = 8096
+sequence_length = 4096
+lr = 0.0001
 epochs = 100
-checkpoint_interval = 100  # Save every 500 iterations
+checkpoint_interval = 100
 
 model = GRUModel(vocab_size, embed_size, hidden_size)
 model = model.to(device) # Transfer model to GPU

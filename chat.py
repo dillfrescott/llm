@@ -43,7 +43,7 @@ model.load_state_dict(checkpoint['model_state_dict'])
 model.eval()
 
 print("Chat with the model! Type 'exit' to end the chat.")
-temperature = 0.3
+temperature = 0.8
 output_length = 200
 
 while True:
