@@ -166,7 +166,7 @@ def main_training_loop(model, train_dataset, val_dataset, optimizer, criterion, 
         # Train
         model.train()
         train_losses = []
-        for inputs_batch, targets_batch in train_dataloader:
+        for step, (inputs_batch, targets_batch) in enumerate(train_dataloader):
             inputs_batch, targets_batch = inputs_batch.to(device), targets_batch.to(device)
             
             optimizer.zero_grad()
@@ -178,6 +178,9 @@ def main_training_loop(model, train_dataset, val_dataset, optimizer, criterion, 
             train_losses.append(loss.item())
             writer.add_scalar('Training Loss', loss.item(), global_step)
             global_step += 1
+            
+            # Print training loss for the current step/batch:
+            print(f"Epoch [{epoch+1}/{config['num_epochs']}], Step [{step+1}/{len(train_dataloader)}], Loss: {loss.item():.4f}")
             
             # Save checkpoint every save_steps_interval
             if global_step % save_steps_interval == 0:
@@ -254,6 +257,15 @@ def main():
 
     args = parser.parse_args()
     config = get_config(args)
+    
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    dataset = NextCharPredictionDataset(config['text'], config['seq_length'])
+    model = GRULanguageModel(dataset.vocab_size, config['embedding_dim'], config['hidden_dim'], config['num_layers']).to(device)
+    model.set_char_mappings(dataset.char_to_idx, dataset.idx_to_char)
+
+    optimizer = optim.Adam(model.parameters(), lr=config['lr'])
+
+    # Now, after defining the 'model', we can load from the checkpoint if needed
     if args.resume:
         checkpoint = torch.load(args.resume)
         model.load_state_dict(checkpoint['model_state_dict'])
@@ -262,7 +274,6 @@ def main():
         # Load any other saved data as needed
     else:
         start_epoch = 0
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     dataset = NextCharPredictionDataset(config['text'], config['seq_length'])
     train_size = int(0.8 * len(dataset))
