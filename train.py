@@ -53,19 +53,19 @@ def char_to_index(char, char_list):
 def index_to_char(index, char_list):
     return char_list[index]
 
-text = read_data("valid.txt")
+text = read_data("vicuna_v2.txt")
 chars = sorted(list(set(text + string.punctuation + ' ')))
 vocab_size = len(chars)
 
 # Hyperparameters
-embed_size = 64
-hidden_size = 64
-sequence_length = 128
-heads = 2
-num_layers = 2
+embed_size = 2896
+hidden_size = 4096
+sequence_length = 1024
+heads = 8
+num_layers = 6
 lr = 0.0001
 epochs = 10000
-checkpoint_interval = 4000
+checkpoint_interval = 5000
 clip_value = 1.0
 
 model = TransformerModel(chars, embed_size, heads, num_layers, hidden_size, sequence_length, lr, epochs, checkpoint_interval, clip_value)

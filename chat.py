@@ -113,6 +113,10 @@ def generate_with_adaptive_contrastive_decoding(input_tensor, model, strong_temp
         
         generated_sequence.append(char_idx)
 
+        # Convert index to character and stream it to the terminal
+        output_char = index_to_char(char_idx, model)
+        print(output_char, end='', flush=True)
+
         # Append to input and continue
         char_indices.append(char_idx)
         input_tensor = torch.tensor([char_indices])
@@ -120,6 +124,7 @@ def generate_with_adaptive_contrastive_decoding(input_tensor, model, strong_temp
         # Adjust the strong temperature adaptively after each token generation
         strong_temperature = adaptive_temperature_adjustment(generated_sequence, strong_temperature, min_temp, max_temp, target_diversity)
 
+    # Return the full sequence for any other use if needed
     return generated_sequence
 
 # Update the main loop to use Adaptive Contrastive Decoding
