@@ -58,14 +58,14 @@ chars = sorted(list(set(text + string.punctuation + ' ')))
 vocab_size = len(chars)
 
 # Hyperparameters
-embed_size = 1024
-hidden_size = 1024
-sequence_length = 512
-heads = 8
-num_layers = 4
+embed_size = 64
+hidden_size = 64
+sequence_length = 128
+heads = 2
+num_layers = 2
 lr = 0.0001
-epochs = 100
-checkpoint_interval = 2000
+epochs = 10000
+checkpoint_interval = 4000
 clip_value = 1.0
 
 model = TransformerModel(chars, embed_size, heads, num_layers, hidden_size, sequence_length, lr, epochs, checkpoint_interval, clip_value)
