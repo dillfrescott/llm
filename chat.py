@@ -67,8 +67,40 @@ model = TransformerModel(
 model.load_state_dict(checkpoint['model_state_dict'])
 model.eval()
 
-print("Chat with the model! Type 'exit' to end the chat.")
-temperature = 0.5
+def generate_with_contrastive_decoding_v2(input_tensor, model, strong_temperature, weak_temperature, output_length):
+    char_indices = input_tensor[0].tolist()
+    generated_sequence = []
+
+    for _ in range(output_length):
+        output = model(input_tensor)
+
+        # Get probabilities with the strong model (lower temperature)
+        strong_probs = torch.nn.functional.softmax(output[0, -1] / strong_temperature, dim=0)
+        
+        # Get probabilities with the weak model (higher temperature)
+        weak_probs = torch.nn.functional.softmax(output[0, -1] / weak_temperature, dim=0)
+        
+        # Calculate contrastive score using the ratio
+        contrastive_scores = strong_probs / (weak_probs + 1e-10)  # Adding a small value to avoid division by zero
+        
+        # Normalize the contrastive scores to get probabilities
+        contrastive_probs = contrastive_scores / contrastive_scores.sum()
+        
+        # Sample from the contrastive probabilities
+        char_idx = torch.multinomial(contrastive_probs, 1).item()
+        
+        generated_sequence.append(char_idx)
+
+        # Append to input and continue
+        char_indices.append(char_idx)
+        input_tensor = torch.tensor([char_indices])
+
+    return generated_sequence
+
+# Update the main loop to use Contrastive Decoding
+print("Chat with the model using Contrastive Decoding! Type 'exit' to end the chat.")
+strong_temperature = 0.5  # Original temperature
+weak_temperature = 1.5  # Higher temperature for the weak model
 output_length = 200
 
 while True:
@@ -76,18 +108,14 @@ while True:
     if input_text == 'exit':
         break
 
-    char_indices = [char_to_index(char, model) for char in input_text]  # Pass model to char_to_index
+    char_indices = [char_to_index(char, model) for char in input_text]
     input_tensor = torch.tensor([char_indices])
 
-    # Generate additional characters after the user input
-    for _ in range(output_length):
-        output = model(input_tensor)
-        char_idx = sample_with_temperature(output[0, -1], temperature) 
-        output_char = index_to_char(char_idx, model)  # Pass model to index_to_char
-        print(output_char, end='', flush=True)
-        char_indices.append(char_idx)
-        input_tensor = torch.tensor([char_indices])
+    # Generate sequence using Contrastive Decoding
+    generated_sequence = generate_with_contrastive_decoding_v2(input_tensor, model, strong_temperature, weak_temperature, output_length)
 
-    print()  # to move to a new line after the generated sequence
+    # Convert indices to characters and print
+    output_chars = [index_to_char(idx, model) for idx in generated_sequence]
+    print(''.join(output_chars))
 
 print("Chat ended.")
