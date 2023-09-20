@@ -3,24 +3,36 @@ import string
 import os
 import torch.nn as nn
 
-class GRUModel(nn.Module):
-    def __init__(self, vocab_size, embed_size, hidden_size):
-        super(GRUModel, self).__init__()
-        self.embedding = nn.Embedding(vocab_size, embed_size)
-        self.gru = nn.GRU(embed_size, hidden_size, batch_first=True)
-        self.fc = nn.Linear(hidden_size, vocab_size)
+class TransformerModel(nn.Module):
+    def __init__(self, chars, embed_size, heads, num_layers, hidden_size, sequence_length, lr, epochs, checkpoint_interval, clip_value):
+        super(TransformerModel, self).__init__()
+        self.chars = chars
+        self.vocab_size = len(chars)
+        self.embed_size = embed_size
+        self.heads = heads
+        self.num_layers = num_layers
+        self.hidden_size = hidden_size
+        self.sequence_length = sequence_length
+        self.lr = lr
+        self.epochs = epochs
+        self.checkpoint_interval = checkpoint_interval
+        self.clip_value = clip_value
 
-    def forward(self, x, hidden):
+        self.embedding = nn.Embedding(self.vocab_size, embed_size)
+        self.transformer = nn.Transformer(embed_size, nhead=heads, num_encoder_layers=num_layers, num_decoder_layers=num_layers)
+        self.fc = nn.Linear(embed_size, self.vocab_size)
+
+    def forward(self, x):
         x = self.embedding(x)
-        out, hidden = self.gru(x, hidden)
-        out = self.fc(out)
-        return out, hidden
+        x = self.transformer(x, x)
+        x = self.fc(x)
+        return x
 
-def char_to_index(char, char_list):
-    return char_list.index(char)
+def char_to_index(char, model):
+    return model.chars.index(char)
 
-def index_to_char(index, char_list):
-    return char_list[index]
+def index_to_char(index, model):
+    return model.chars[index]
 
 def sample_with_temperature(logits, temperature):
     probs = torch.nn.functional.softmax(logits / temperature, dim=0)
@@ -33,13 +45,13 @@ if not os.path.exists(checkpoint_path):
     exit()
 
 checkpoint = torch.load(checkpoint_path)
-
-# Extract hyperparameters from the checkpoint
 hyperparameters = checkpoint['hyperparameters']
 
-# Instantiate model with hyperparameters
+# First, we create a dummy list of chars to instantiate the model
+dummy_chars = ['a']  # This is just a placeholder
+
 model = TransformerModel(
-    vocab_size=hyperparameters['vocab_size'],
+    chars=checkpoint['chars'],
     embed_size=hyperparameters['embed_size'],
     heads=hyperparameters['heads'],
     num_layers=hyperparameters['num_layers'],
@@ -51,6 +63,7 @@ model = TransformerModel(
     clip_value=hyperparameters['clip_value']
 )
 
+# Now load the state dict.
 model.load_state_dict(checkpoint['model_state_dict'])
 model.eval()
 
@@ -63,15 +76,15 @@ while True:
     if input_text == 'exit':
         break
 
-    char_indices = [char_to_index(char, chars) for char in input_text]
+    char_indices = [char_to_index(char, model) for char in input_text]  # Pass model to char_to_index
     input_tensor = torch.tensor([char_indices])
 
     # Generate additional characters after the user input
     for _ in range(output_length):
         output = model(input_tensor)
-        char_idx = sample_with_temperature(output[0, -1], temperature) # sample from the last generated character
-        output_char = index_to_char(char_idx, chars)
-        print(output_char, end='', flush=True)  # print character immediately
+        char_idx = sample_with_temperature(output[0, -1], temperature) 
+        output_char = index_to_char(char_idx, model)  # Pass model to index_to_char
+        print(output_char, end='', flush=True)
         char_indices.append(char_idx)
         input_tensor = torch.tensor([char_indices])
 

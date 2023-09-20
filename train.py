@@ -8,9 +8,10 @@ from tqdm import tqdm
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class TransformerModel(nn.Module):
-    def __init__(self, vocab_size, embed_size, heads, num_layers, hidden_size, sequence_length, lr, epochs, checkpoint_interval, clip_value):
+    def __init__(self, chars, embed_size, heads, num_layers, hidden_size, sequence_length, lr, epochs, checkpoint_interval, clip_value):
         super(TransformerModel, self).__init__()
-        self.vocab_size = vocab_size
+        self.chars = chars
+        self.vocab_size = len(chars)
         self.embed_size = embed_size
         self.heads = heads
         self.num_layers = num_layers
@@ -58,7 +59,7 @@ epochs = 100
 checkpoint_interval = 2000
 clip_value = 1.0
 
-model = TransformerModel(vocab_size, embed_size, heads, num_layers, hidden_size, sequence_length, lr, epochs, checkpoint_interval, clip_value)
+model = TransformerModel(chars, embed_size, heads, num_layers, hidden_size, sequence_length, lr, epochs, checkpoint_interval, clip_value)
 model = model.to(device) 
 criterion = nn.CrossEntropyLoss()
 optimizer = optim.Adam(model.parameters(), lr=lr)
@@ -102,7 +103,7 @@ for epoch in range(epochs):
             torch.save({
                 'model_state_dict': model.state_dict(),
                 'optimizer_state_dict': optimizer.state_dict(),
-                'chars': chars,
+                'chars': model.chars,
                 'hyperparameters': {
                     'vocab_size': model.vocab_size,
                     'embed_size': model.embed_size,
