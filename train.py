@@ -7,30 +7,39 @@ from tqdm import tqdm
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+def compute_l2_norm(parameters):
+    l2_norm = 0.0
+    for param in parameters:
+        l2_norm += torch.sum(param ** 2)
+    return l2_norm
+
+
 class TransformerModel(nn.Module):
-    def __init__(self, chars, embed_size, heads, num_layers, hidden_size, sequence_length, lr, epochs, checkpoint_interval, clip_value):
-        super(TransformerModel, self).__init__()
-        self.chars = chars
-        self.vocab_size = len(chars)
-        self.embed_size = embed_size
-        self.heads = heads
-        self.num_layers = num_layers
-        self.hidden_size = hidden_size
-        self.sequence_length = sequence_length
-        self.lr = lr
-        self.epochs = epochs
-        self.checkpoint_interval = checkpoint_interval
-        self.clip_value = clip_value
+  def __init__(self, chars, embed_size, heads, num_layers, hidden_size, sequence_length, lr, epochs, checkpoint_interval, clip_value, weight_decay=0.001):
+    super(TransformerModel, self).__init__()
+    self.chars = chars
+    self.vocab_size = len(chars)
+    self.embed_size = embed_size
+    self.heads = heads
+    self.num_layers = num_layers
+    self.hidden_size = hidden_size
+    self.sequence_length = sequence_length
+    self.lr = lr
+    self.epochs = epochs
+    self.checkpoint_interval = checkpoint_interval
+    self.clip_value = clip_value
+    self.weight_decay = weight_decay
 
-        self.embedding = nn.Embedding(vocab_size, embed_size)
-        self.transformer = nn.Transformer(embed_size, nhead=heads, num_encoder_layers=num_layers, num_decoder_layers=num_layers)
-        self.fc = nn.Linear(embed_size, vocab_size)
+    self.embedding = nn.Embedding(vocab_size, embed_size)
+    self.transformer = nn.Transformer(embed_size, nhead=heads, num_encoder_layers=num_layers, num_decoder_layers=num_layers)
+    self.fc = nn.Linear(embed_size, vocab_size)
+    
+  def forward(self, x):
+    x = self.embedding(x)
+    x = self.transformer(x, x)
 
-    def forward(self, x):
-        x = self.embedding(x)
-        x = self.transformer(x, x)
-        x = self.fc(x)
-        return x
+    x = self.fc(x)
+    return x
 
 # Read and process data
 def read_data(file_path):
@@ -88,6 +97,8 @@ for epoch in range(epochs):
         optimizer.zero_grad()
         outputs = model(inputs.unsqueeze(0))
         loss = criterion(outputs.squeeze(0), targets)
+        l2_norm_value = compute_l2_norm(model.parameters())
+        loss += model.weight_decay * l2_norm_value
         loss.backward()
 
         # Gradient clipping
