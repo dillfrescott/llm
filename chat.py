@@ -33,12 +33,24 @@ if not os.path.exists(checkpoint_path):
     exit()
 
 checkpoint = torch.load(checkpoint_path)
-chars = checkpoint['chars']
-vocab_size = len(chars)
-embed_size = checkpoint['model_state_dict']['embedding.weight'].shape[1]
-hidden_size = checkpoint['model_state_dict']['gru.weight_hh_l0'].shape[1]
 
-model = GRUModel(vocab_size, embed_size, hidden_size)
+# Extract hyperparameters from the checkpoint
+hyperparameters = checkpoint['hyperparameters']
+
+# Instantiate model with hyperparameters
+model = TransformerModel(
+    vocab_size=hyperparameters['vocab_size'],
+    embed_size=hyperparameters['embed_size'],
+    heads=hyperparameters['heads'],
+    num_layers=hyperparameters['num_layers'],
+    hidden_size=hyperparameters['hidden_size'],
+    sequence_length=hyperparameters['sequence_length'],
+    lr=hyperparameters['lr'],
+    epochs=hyperparameters['epochs'],
+    checkpoint_interval=hyperparameters['checkpoint_interval'],
+    clip_value=hyperparameters['clip_value']
+)
+
 model.load_state_dict(checkpoint['model_state_dict'])
 model.eval()
 
@@ -51,20 +63,17 @@ while True:
     if input_text == 'exit':
         break
 
-    hidden = torch.zeros(1, 1, hidden_size)
-    generated_sequence = []
-
-    for char in input_text:
-        char_idx = char_to_index(char, chars)
-        output, hidden = model(torch.tensor([[char_idx]]), hidden)
+    char_indices = [char_to_index(char, chars) for char in input_text]
+    input_tensor = torch.tensor([char_indices])
 
     # Generate additional characters after the user input
     for _ in range(output_length):
-        output, hidden = model(torch.tensor([[char_idx]]), hidden)
-        char_idx = sample_with_temperature(output[0, 0], temperature)
+        output = model(input_tensor)
+        char_idx = sample_with_temperature(output[0, -1], temperature) # sample from the last generated character
         output_char = index_to_char(char_idx, chars)
         print(output_char, end='', flush=True)  # print character immediately
-        generated_sequence.append(output_char)
+        char_indices.append(char_idx)
+        input_tensor = torch.tensor([char_indices])
 
     print()  # to move to a new line after the generated sequence
 
