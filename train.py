@@ -4,6 +4,7 @@ import torch.optim as optim
 import string
 import os
 from tqdm import tqdm
+import gc
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -69,7 +70,7 @@ heads = 8
 num_layers = 6
 lr = 0.0001
 epochs = 10000
-checkpoint_interval = 5000
+checkpoint_interval = 100
 clip_value = 1.0
 
 model = TransformerModel(chars, embed_size, heads, num_layers, hidden_size, sequence_length, lr, epochs, checkpoint_interval, clip_value)
@@ -82,17 +83,30 @@ scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=30, gamma=0.1)
 
 # Load previous checkpoint if exists
 checkpoint_path = "model_checkpoint.pth"
+step = 0
+start_epoch = 0
+start_step = 0
 if os.path.exists(checkpoint_path):
-    checkpoint = torch.load(checkpoint_path)
+    checkpoint = torch.load(checkpoint_path, map_location=torch.device('cpu'))
     model.load_state_dict(checkpoint['model_state_dict'])
     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
     chars = checkpoint['chars']
+    start_epoch = checkpoint['epoch']  # Load the saved epoch
+    step = checkpoint['step']  # Load the saved step and update the step variable directly
+    model = model.to(device)
     print("Loaded checkpoint!")
 
 # Training the model
-for epoch in range(epochs):
+for epoch in range(start_epoch, epochs):
     total_steps = (len(text) - sequence_length) // sequence_length
-    pbar = tqdm(range(0, len(text) - sequence_length, sequence_length), desc=f"Epoch {epoch+1}/{epochs}", total=total_steps)
+    
+    # Calculate the starting index based on the step
+    start_i = (step * sequence_length) % len(text) if epoch == start_epoch else 0
+    iterations_from_start_i = (len(text) - start_i) // sequence_length
+    
+    pbar = tqdm(range(start_i, len(text) - sequence_length, sequence_length), 
+                desc=f"Epoch {epoch+1}/{epochs}", 
+                total=iterations_from_start_i)
 
     for i in pbar:
         inputs = torch.tensor([char_to_index(c, chars) for c in text[i:i+sequence_length]], dtype=torch.long).to(device)
@@ -113,12 +127,14 @@ for epoch in range(epochs):
         # Update the progress bar description to include the current loss
         pbar.set_description(f"Epoch {epoch+1}/{epochs} Loss: {loss.item():.4f}")
 
-        # Save checkpoint after the first epoch has finished
-        if (i // sequence_length) % checkpoint_interval == 0 and epoch > 0:  # Check if it's not the first epoch
+        # Save checkpoint based on total steps taken
+        if step % checkpoint_interval == 0 and step > 0:  # Check if it's not the first step
             torch.save({
                 'model_state_dict': model.state_dict(),
                 'optimizer_state_dict': optimizer.state_dict(),
                 'chars': model.chars,
+                'epoch': epoch,  # Save the current epoch
+                'step': step,    # Save the current step
                 'hyperparameters': {
                     'vocab_size': model.vocab_size,
                     'embed_size': model.embed_size,
@@ -133,6 +149,9 @@ for epoch in range(epochs):
                 }
             }, checkpoint_path)
             print("Saved checkpoint!")
+        
+        # Increment the step counter
+        step += 1
 
     # Step the learning rate scheduler
     scheduler.step()
