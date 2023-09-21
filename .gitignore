@@ -1,8 +1,0 @@
-# Ignore everything
-*
-
-# But do not ignore .py files
-!*.py
-
-# Also, include directories, so we can search them for .py files
-!*/
