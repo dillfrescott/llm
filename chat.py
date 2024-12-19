@@ -3,30 +3,45 @@ import string
 import os
 import torch.nn as nn
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+# Positional Encoding
+class PositionalEncoding(nn.Module):
+    def __init__(self, embed_size, max_len=512):
+        super(PositionalEncoding, self).__init__()
+        pe = torch.zeros(max_len, embed_size)
+        position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, embed_size, 2).float() * (-torch.log(torch.tensor(10000.0)) / embed_size))
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term)
+        self.pe = pe.unsqueeze(0).to(device)
+
+    def forward(self, x):
+        return x + self.pe[:, :x.size(1)]
+
+# Transformer Model
 class TransformerModel(nn.Module):
-    def __init__(self, chars, embed_size, heads, num_layers, hidden_size, sequence_length, lr, epochs, checkpoint_interval, clip_value):
+    def __init__(self, chars, embed_size, heads, num_layers, hidden_size, sequence_length):
         super(TransformerModel, self).__init__()
         self.chars = chars
         self.vocab_size = len(chars)
         self.embed_size = embed_size
-        self.heads = heads
-        self.num_layers = num_layers
-        self.hidden_size = hidden_size
-        self.sequence_length = sequence_length
-        self.lr = lr
-        self.epochs = epochs
-        self.checkpoint_interval = checkpoint_interval
-        self.clip_value = clip_value
 
         self.embedding = nn.Embedding(self.vocab_size, embed_size)
-        self.transformer = nn.Transformer(embed_size, nhead=heads, num_encoder_layers=num_layers, num_decoder_layers=num_layers)
+        self.positional_encoding = PositionalEncoding(embed_size, sequence_length)
+        
+        # Use TransformerEncoder
+        self.encoder_layer = nn.TransformerEncoderLayer(d_model=embed_size, nhead=heads, dim_feedforward=hidden_size)
+        self.transformer = nn.TransformerEncoder(self.encoder_layer, num_layers=num_layers)
+        
         self.fc = nn.Linear(embed_size, self.vocab_size)
 
-    def forward(self, x):
+    def forward(self, x, memory=None):
         x = self.embedding(x)
-        x = self.transformer(x, x)
+        x = self.positional_encoding(x)
+        x = self.transformer(x)  # No memory required for encoder-only
         x = self.fc(x)
-        return x
+        return x, memory
 
 def char_to_index(char, model):
     return model.chars.index(char)
@@ -45,26 +60,22 @@ if not os.path.exists(checkpoint_path):
     exit()
 
 checkpoint = torch.load(checkpoint_path)
+chars = checkpoint['chars']
 hyperparameters = checkpoint['hyperparameters']
 
-# First, we create a dummy list of chars to instantiate the model
-dummy_chars = ['a']  # This is just a placeholder
-
+# Instantiate the model using hyperparameters from the checkpoint
 model = TransformerModel(
-    chars=checkpoint['chars'],
+    chars=chars,
     embed_size=hyperparameters['embed_size'],
     heads=hyperparameters['heads'],
     num_layers=hyperparameters['num_layers'],
     hidden_size=hyperparameters['hidden_size'],
-    sequence_length=hyperparameters['sequence_length'],
-    lr=hyperparameters['lr'],
-    epochs=hyperparameters['epochs'],
-    checkpoint_interval=hyperparameters['checkpoint_interval'],
-    clip_value=hyperparameters['clip_value']
+    sequence_length=hyperparameters['sequence_length']
 )
 
-# Now load the state dict.
+# Load the state dict.
 model.load_state_dict(checkpoint['model_state_dict'])
+model.to(device)  # Move the model to the appropriate device
 model.eval()
 
 print("Chat with the model! Type 'exit' to end the chat.")
@@ -77,16 +88,17 @@ while True:
         break
 
     char_indices = [char_to_index(char, model) for char in input_text]  # Pass model to char_to_index
-    input_tensor = torch.tensor([char_indices])
+    input_tensor = torch.tensor([char_indices]).to(device)  # Move the input tensor to the same device as the model
 
     # Generate additional characters after the user input
     for _ in range(output_length):
-        output = model(input_tensor)
-        char_idx = sample_with_temperature(output[0, -1], temperature) 
-        output_char = index_to_char(char_idx, model)  # Pass model to index_to_char
-        print(output_char, end='', flush=True)
-        char_indices.append(char_idx)
-        input_tensor = torch.tensor([char_indices])
+        with torch.no_grad():
+            output, _ = model(input_tensor)
+            char_idx = sample_with_temperature(output[0, -1], temperature) 
+            output_char = index_to_char(char_idx, model)  # Pass model to index_to_char
+            print(output_char, end='', flush=True)
+            char_indices.append(char_idx)
+            input_tensor = torch.tensor([char_indices]).to(device)  # Move the updated input tensor to the same device
 
     print()  # to move to a new line after the generated sequence
 
